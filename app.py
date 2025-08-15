@@ -60,6 +60,8 @@ def extract_data_from_pdf(pdf_file):
                         "eta": row[0],
                         "last_port": last_port,
                         "next_port": row[5].strip(),
+                        "discharge": row[13].strip(),
+                        "loading": row[14].strip(),
                         "remarks": row[18].strip()
                     })
 
@@ -77,4 +79,5 @@ if __name__ == "__main__":
 
    app.run(host='0.0.0.0' ,debug=True)
 application = app
+
 
