@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 import requests
 import io
 import pdfplumber
@@ -122,5 +122,6 @@ if __name__ == "__main__":
 
    app.run(host='0.0.0.0' ,debug=True)
 application = app
+
 
 
