@@ -11,6 +11,11 @@ CORS(app)
 PDF_URL = "http://ezport.hipg.lk/Localfolder/Berthing/CQYB.pdf"
 VALID_PORTS = {"Mundra", "Deendayal", "Mumbai","Pipavav"}
 
+# MongoDB connection
+client = MongoClient("mongodb+srv://yasantha:Yasantha%40123@fronxc.mhfwocx.mongodb.net/?retryWrites=true&w=majority&appName=fronxC")  # change if remote
+db = client["shipdb"]
+orders_col = db["orders"]
+
 def download_pdf(url):
     response = requests.get(url)
     return io.BytesIO(response.content)
@@ -75,7 +80,45 @@ def ships():
     print(f"Extracted {len(data)} ships data.")
     return jsonify(data)
 
+# 1️⃣ Save order
+@app.route("/save-order", methods=["POST"])
+def save_order():
+    payload = request.json
+    required = ["whatsapp_number", "order_date", "called_date", "colour"]
+
+    if not all(k in payload for k in required):
+        return jsonify({"error": "Missing required fields"}), 400
+
+    try:
+        order = {
+            "whatsapp_number": payload["whatsapp_number"],
+            "order_date": datetime.strptime(payload["order_date"], "%Y-%m-%d"),
+            "called_date": datetime.strptime(payload["called_date"], "%Y-%m-%d"),
+            "colour": payload["colour"],
+            "timestamp": datetime.utcnow()
+        }
+        orders_col.insert_one(order)
+        return jsonify({"message": "Order saved successfully"}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# 2️⃣ Get latest order_date per colour
+@app.route("/latest-orders", methods=["GET"])
+def latest_orders():
+    pipeline = [
+        {"$sort": {"order_date": -1}},
+        {"$group": {
+            "_id": "$colour",
+            "latest_order_date": {"$first": "$order_date"}
+        }}
+    ]
+    results = list(orders_col.aggregate(pipeline))
+
+    data = {r["_id"]: r["latest_order_date"].strftime("%Y-%m-%d") for r in results}
+    return jsonify(data)
+
 if __name__ == "__main__":
 
    app.run(host='0.0.0.0' ,debug=True)
 application = app
+
