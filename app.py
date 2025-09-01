@@ -17,9 +17,11 @@ orders_col = db["orders"]
 PDF_URL = "http://ezport.hipg.lk/Localfolder/Berthing/CQYB.pdf"
 VALID_PORTS = {"Mundra", "Deendayal", "Mumbai", "Pipavav"}
 
+
 def download_pdf(url):
     response = requests.get(url)
     return io.BytesIO(response.content)
+
 
 def extract_data_from_pdf(pdf_file):
     result = []
@@ -32,38 +34,38 @@ def extract_data_from_pdf(pdf_file):
             tables = page.extract_tables()
             count = 0
             for table in tables:
-                # print(table) 
                 for row in table:
-                
                     if count < 2 and page.page_number == 1:
                         count += 1
                         continue
 
-                    vessel_type = row[3].strip().lower()
+                    vessel_type = (row[3] or "").strip().lower()
                     if "roro" not in vessel_type:
                         continue
 
-                    last_port = row[4].strip().capitalize()
+                    last_port = (row[4] or "").strip().capitalize()
                     if last_port not in VALID_PORTS:
                         continue
 
                     result.append({
-                        "vessel_name": row[6].strip(),
+                        "vessel_name": (row[6] or "").strip(),
                         "eta": row[0],
                         "last_port": last_port,
-                        "next_port": row[5].strip(),
-                        "discharge": row[13].strip(),
-                        "loading": row[14].strip(),
-                        "remarks": row[18].strip()
+                        "next_port": (row[5] or "").strip(),
+                        "discharge": (row[13] or "").strip(),
+                        "loading": (row[14] or "").strip(),
+                        "remarks": (row[18] or "").strip()
                     })
 
     return result
+
 
 @app.route("/ships")
 def ships():
     pdf = download_pdf(PDF_URL)
     data = extract_data_from_pdf(pdf)
     return jsonify(data)
+
 
 # 1️⃣ Save order
 @app.route("/save-order", methods=["POST"])
@@ -87,6 +89,7 @@ def save_order():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 # 2️⃣ Get latest order_date per colour
 @app.route("/latest-orders", methods=["GET"])
 def latest_orders():
@@ -101,6 +104,10 @@ def latest_orders():
 
     data = {r["_id"]: r["latest_order_date"].strftime("%Y-%m-%d") for r in results}
     return jsonify(data)
+
+
+# ✅ Azure expects `application`
+application = app
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", debug=True)
