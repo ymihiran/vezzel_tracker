@@ -5,7 +5,7 @@ import pdfplumber
 from datetime import datetime, timedelta
 from flask_cors import CORS
 from pymongo import MongoClient
-import os
+import uuid
 
 app = Flask(__name__)
 CORS(app)
@@ -17,10 +17,13 @@ VALID_PORTS = {"Mundra", "Deendayal", "Mumbai", "Pipavav"}
 client = MongoClient("mongodb+srv://yasantha:Yasantha%40123@fronxc.mhfwocx.mongodb.net/?retryWrites=true&w=majority&appName=fronxC")
 db = client["shipdb"]
 orders_col = db["orders"]
+ships_col = db["ships"]   # 👈 new collection for ship data
+
 
 def download_pdf(url):
     response = requests.get(url)
     return io.BytesIO(response.content)
+
 
 def extract_data_from_pdf(pdf_file):
     result = []
@@ -34,7 +37,6 @@ def extract_data_from_pdf(pdf_file):
             count = 0
             for table in tables:
                 for row in table:
-                    # skip first 2 rows if 1st page
                     if count < 2 and page.page_number == 1:
                         count += 1
                         continue
@@ -54,10 +56,11 @@ def extract_data_from_pdf(pdf_file):
                         "next_port": row[5].strip(),
                         "discharge": row[13].strip(),
                         "loading": row[14].strip(),
-                        "remarks": row[18].strip()
+                        "remarks": row[18].strip(),
+                        "timestamp": datetime.utcnow()   # 👈 add timestamp for latest record
                     })
-
     return result
+
 
 @app.route("/ships")
 def ships():
@@ -65,6 +68,8 @@ def ships():
     data = extract_data_from_pdf(pdf)
     return jsonify(data)
 
+
+# 1️⃣ Save order
 @app.route("/save-order", methods=["POST"])
 def save_order():
     payload = request.json
@@ -86,6 +91,8 @@ def save_order():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+# 2️⃣ Get latest order_date per colour
 @app.route("/latest-orders", methods=["GET"])
 def latest_orders():
     pipeline = [
@@ -96,13 +103,55 @@ def latest_orders():
         }}
     ]
     results = list(orders_col.aggregate(pipeline))
+
     data = {r["_id"]: r["latest_order_date"].strftime("%Y-%m-%d") for r in results}
     return jsonify(data)
 
-# Cloud Run entrypoint
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))  # 👈 FIX: use Cloud Run's PORT
-    app.run(host="0.0.0.0", port=port, debug=True)
 
-# For Gunicorn / WSGI
+# 3️⃣ Upload PDF from frontend, process, and save to MongoDB
+@app.route("/upload-pdf", methods=["POST"])
+def upload_pdf():
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    pdf_file = request.files["file"]
+    data = extract_data_from_pdf(pdf_file)
+
+    if not data:
+        return jsonify({"message": "No valid ships found"}), 200
+
+    # 👇 Add a batch_id to group this upload
+    batch_id = str(uuid.uuid4())
+    for d in data:
+        d["batch_id"] = batch_id
+
+    # Save batch to MongoDB
+    ships_col.insert_many(data)
+
+    return jsonify({
+        "message": "Ships data saved",
+        "count": len(data),
+        "batch_id": batch_id
+    }), 201
+
+
+# 4️⃣ Get all records from the latest upload batch
+@app.route("/latest-ship", methods=["GET"])
+def latest_ship():
+    latest = ships_col.find_one(sort=[("timestamp", -1)])
+    if not latest:
+        return jsonify({"error": "No records found"}), 404
+
+    latest_batch_id = latest["batch_id"]
+
+    ships = list(ships_col.find({"batch_id": latest_batch_id}).sort("timestamp", 1))
+    for ship in ships:
+        ship["_id"] = str(ship["_id"])
+
+    return jsonify(ships)
+
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', debug=True)
+
 application = app
