@@ -52,6 +52,7 @@ def extract_data_from_pdf(pdf_file):
                     result.append({
                         "vessel_name": row[6].strip(),
                         "eta": row[0],
+                        "berth": row[1].strip(),
                         "last_port": last_port,
                         "next_port": row[5].strip(),
                         "discharge": row[13].strip(),
@@ -157,4 +158,5 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=port, debug=True)
 
 application = app
+
 
