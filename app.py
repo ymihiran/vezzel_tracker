@@ -17,7 +17,8 @@ VALID_PORTS = {"Mundra", "Deendayal", "Mumbai", "Pipavav"}
 client = MongoClient("mongodb+srv://yasantha:Yasantha%40123@fronxc.mhfwocx.mongodb.net/?retryWrites=true&w=majority&appName=fronxC")
 db = client["shipdb"]
 orders_col = db["orders"]
-ships_col = db["ships"]   # 👈 new collection for ship data
+ships_col = db["ships"]  
+tracking_col = db["tracking_links"]
 
 
 def download_pdf(url):
@@ -152,11 +153,44 @@ def latest_ship():
     return jsonify(ships)
 
 
+# 5️⃣ Add/Update tracking link for a ship
+@app.route("/add-tracking-link", methods=["POST"])
+def add_tracking_link():
+    payload = request.json
+    required = ["vessel_name", "tracking_link"]
+
+    if not all(k in payload for k in required):
+        return jsonify({"error": "Missing required fields"}), 400
+
+    try:
+        vessel_name = payload["vessel_name"].strip()
+        tracking_link = payload["tracking_link"].strip()
+
+        # Upsert (update if exists, else insert new)
+        tracking_col.update_one(
+            {"vessel_name": vessel_name},
+            {"$set": {"tracking_link": tracking_link, "timestamp": datetime.utcnow()}},
+            upsert=True
+        )
+
+        return jsonify({"message": f"Tracking link saved for {vessel_name}"}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# 6️⃣ Get all tracking links
+@app.route("/tracking-links", methods=["GET"])
+def tracking_links():
+    links = list(tracking_col.find({}, {"_id": 0, "vessel_name": 1, "tracking_link": 1}))
+    return jsonify(links)
+
+
 if __name__ == "__main__":
     import os
     port = int(os.environ.get("PORT", 8080))  # Cloud Run provides PORT env
     app.run(host="0.0.0.0", port=port, debug=True)
 
 application = app
+
 
 
